@@ -250,14 +250,17 @@ void osdp_sc_setup(struct osdp_pd *pd)
 	memcpy(pd->sc.scbk, scbk, 16);
 
 	if (is_pd_mode(pd)) {
+		/* Build cUID from the first 8 bytes of REPLY_PDID:
+		 * vendor[3] + model[1] + version[1] + serial[3, little-endian].
+		 * This keeps Secure Channel identity consistent with CMD_ID. */
 		pd->sc.pd_client_uid[0] = BYTE_0(pd->id.vendor_code);
 		pd->sc.pd_client_uid[1] = BYTE_1(pd->id.vendor_code);
-		pd->sc.pd_client_uid[2] = BYTE_0(pd->id.model);
-		pd->sc.pd_client_uid[3] = BYTE_1(pd->id.version);
-		pd->sc.pd_client_uid[4] = BYTE_0(pd->id.serial_number);
-		pd->sc.pd_client_uid[5] = BYTE_1(pd->id.serial_number);
-		pd->sc.pd_client_uid[6] = BYTE_2(pd->id.serial_number);
-		pd->sc.pd_client_uid[7] = BYTE_3(pd->id.serial_number);
+		pd->sc.pd_client_uid[2] = BYTE_2(pd->id.vendor_code);
+		pd->sc.pd_client_uid[3] = BYTE_0(pd->id.model);
+		pd->sc.pd_client_uid[4] = BYTE_0(pd->id.version);
+		pd->sc.pd_client_uid[5] = BYTE_0(pd->id.serial_number);
+		pd->sc.pd_client_uid[6] = BYTE_1(pd->id.serial_number);
+		pd->sc.pd_client_uid[7] = BYTE_2(pd->id.serial_number);
 	} else {
 		osdp_fill_random(pd->sc.cp_random, 8);
 	}
