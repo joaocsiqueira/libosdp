@@ -1548,6 +1548,23 @@ void osdp_pd_set_event_completion_callback(osdp_t *ctx,
 	pd->event_completion_callback_arg = arg;
 }
 
+void osdp_pd_set_install_mode(osdp_t *ctx, bool enable)
+{
+	input_check(ctx);
+	struct osdp_pd *pd = GET_CURRENT_PD(ctx);
+
+	if (enable) {
+		SET_FLAG(pd, PD_FLAG_INSTALL_MODE);
+	} else {
+		CLEAR_FLAG(pd, PD_FLAG_INSTALL_MODE);
+	}
+	/* Toggling the trust model invalidates any in-flight SC session.
+	 * Drop it so the next CP packet either lands plain (allowed in
+	 * install mode) or triggers a fresh CHLNG handshake. The PD
+	 * sequence counter is intentionally preserved here. */
+	pd_sc_deactivate(pd);
+}
+
 int osdp_pd_submit_event(osdp_t *ctx, const struct osdp_event *event)
 {
 	input_check(ctx);

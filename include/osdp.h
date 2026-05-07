@@ -1129,6 +1129,30 @@ void osdp_pd_set_event_completion_callback(osdp_t *ctx,
 					   void *arg);
 
 /**
+ * @brief Toggle the install-mode flag on a live PD context without
+ *        rebuilding it.
+ *
+ * Equivalent to passing OSDP_FLAG_INSTALL_MODE through @ref osdp_pd_setup,
+ * but applied at runtime so the application can enter/leave install mode
+ * (e.g. via an operator switch) without going through teardown + setup.
+ *
+ * Avoiding the rebuild preserves the per-PD sequence counter, which is
+ * what most CPs use to detect message loss; rebuilds reset it to the
+ * initial value and CPs that don't auto-resync interpret the divergence
+ * as NAK(04) loops.
+ *
+ * Any active Secure Channel session is unconditionally deactivated when
+ * this is called: install mode toggles the trust model (SCBK-D allowed /
+ * not allowed), so the prior session keys are no longer valid anyway and
+ * letting them stand would cause MAC failures on the next packet.
+ *
+ * @param ctx OSDP context
+ * @param enable True to enter install mode, false to leave it
+ */
+OSDP_EXPORT
+void osdp_pd_set_install_mode(osdp_t *ctx, bool enable);
+
+/**
  * @brief API to notify PD events to CP. These events are sent to the CP as an
  * alternate response to a POLL command.
  *
