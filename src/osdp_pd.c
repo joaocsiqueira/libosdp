@@ -1195,6 +1195,12 @@ static void osdp_pd_update(struct osdp_pd *pd)
 		LOG_INF("PD offline; lost CP activity");
 		pd_set_offline(pd);
 		osdp_file_tx_abort(pd);
+		/* When the CP comes back after a quiet period, force the next
+		 * exchange to start from a clean PHY/SC state. This mirrors the
+		 * "GET ID first" recovery pattern seen in the field and avoids
+		 * carrying stale sequence or partial-packet state into a fresh
+		 * CHLNG attempt. */
+		pd_error_reset(pd);
 		notify_pd_status(pd, false);
 	}
 
@@ -1500,6 +1506,8 @@ void osdp_pd_teardown(osdp_t *ctx)
 	safe_free(pd_ctx->rx_buf);
 	safe_free(pd);
 	safe_free(ctx);
+#else
+	pd_static_slot_release(pd_ctx);
 #endif
 }
 

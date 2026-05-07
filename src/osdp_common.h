@@ -900,38 +900,155 @@ static inline struct osdp_rb *cp_rx_rb_alloc(int pd_idx)
 
 #ifdef OPT_OSDP_STATIC
 
+#ifndef OSDP_STATIC_PD_CONTEXTS
+#define OSDP_STATIC_PD_CONTEXTS 16
+#endif
+
+static inline struct osdp *pd_static_ctx_array_get(void)
+{
+	static struct osdp g_osdp_ctx[OSDP_STATIC_PD_CONTEXTS];
+	return g_osdp_ctx;
+}
+
+static inline struct osdp_pd *pd_static_ctx_pd_array_get(void)
+{
+	static struct osdp_pd g_osdp_pd_ctx[OSDP_STATIC_PD_CONTEXTS];
+	return g_osdp_pd_ctx;
+}
+
+static inline uint8_t (*pd_static_rx_buf_array_get(void))[OSDP_PACKET_BUF_SIZE]
+{
+	static uint8_t g_osdp_pd_rx_buf[OSDP_STATIC_PD_CONTEXTS][OSDP_PACKET_BUF_SIZE];
+	return g_osdp_pd_rx_buf;
+}
+
+#ifdef OPT_OSDP_RX_ZERO_COPY
+
+static inline struct osdp_rx_pkt *pd_static_rx_pkt_array_get(void)
+{
+	static struct osdp_rx_pkt g_osdp_rx_pkt[OSDP_STATIC_PD_CONTEXTS];
+	return g_osdp_rx_pkt;
+}
+
+#else /* OPT_OSDP_RX_ZERO_COPY */
+
+static inline struct osdp_rb *pd_static_rx_rb_array_get(void)
+{
+	static struct osdp_rb g_osdp_rb[OSDP_STATIC_PD_CONTEXTS];
+	return g_osdp_rb;
+}
+
+#endif /* OPT_OSDP_RX_ZERO_COPY */
+
+static inline bool *pd_static_ctx_in_use_get(void)
+{
+	static bool g_osdp_ctx_in_use[OSDP_STATIC_PD_CONTEXTS];
+	return g_osdp_ctx_in_use;
+}
+
+static inline int *pd_static_pending_slot_get(void)
+{
+	static int g_osdp_pending_slot = -1;
+	return &g_osdp_pending_slot;
+}
+
+static inline unsigned int *pd_static_next_slot_get(void)
+{
+	static unsigned int g_osdp_next_slot = 0u;
+	return &g_osdp_next_slot;
+}
+
+static inline int pd_static_slot_claim(void)
+{
+	bool *in_use = pd_static_ctx_in_use_get();
+	unsigned int *next = pd_static_next_slot_get();
+
+	for (unsigned int n = 0u; n < OSDP_STATIC_PD_CONTEXTS; n++) {
+		unsigned int slot = (*next + n) % OSDP_STATIC_PD_CONTEXTS;
+		if (!in_use[slot]) {
+			in_use[slot] = true;
+			*next = (slot + 1u) % OSDP_STATIC_PD_CONTEXTS;
+			return (int)slot;
+		}
+	}
+
+	return -1;
+}
+
+static inline int pd_static_slot_from_ctx(struct osdp *ctx)
+{
+	struct osdp *ctx_array = pd_static_ctx_array_get();
+	ptrdiff_t slot = ctx - ctx_array;
+
+	if (slot < 0 || slot >= OSDP_STATIC_PD_CONTEXTS) {
+		return -1;
+	}
+
+	return (int)slot;
+}
+
+static inline void pd_static_slot_release(struct osdp *ctx)
+{
+	bool *in_use = pd_static_ctx_in_use_get();
+	int *pending = pd_static_pending_slot_get();
+	int slot = pd_static_slot_from_ctx(ctx);
+
+	if (slot >= 0) {
+		in_use[slot] = false;
+	}
+	if (*pending == slot) {
+		*pending = -1;
+	}
+}
+
 static inline struct osdp *pd_static_ctx_get(void)
 {
-	static struct osdp g_osdp_ctx;
-	return &g_osdp_ctx;
+	int slot = pd_static_slot_claim();
+	if (slot < 0) {
+		return NULL;
+	}
+	*pd_static_pending_slot_get() = slot;
+	return &pd_static_ctx_array_get()[slot];
 }
 
 static inline struct osdp_pd *pd_static_ctx_pd_get(void)
 {
-	static struct osdp_pd g_osdp_pd_ctx;
-	return &g_osdp_pd_ctx;
+	int slot = *pd_static_pending_slot_get();
+	if (slot < 0 || slot >= OSDP_STATIC_PD_CONTEXTS) {
+		return NULL;
+	}
+	return &pd_static_ctx_pd_array_get()[slot];
 }
 
 static inline uint8_t *pd_static_rx_buf_get(void)
 {
-	static uint8_t g_osdp_pd_rx_buf[OSDP_PACKET_BUF_SIZE];
-	return g_osdp_pd_rx_buf;
+	int slot = *pd_static_pending_slot_get();
+	if (slot < 0 || slot >= OSDP_STATIC_PD_CONTEXTS) {
+		return NULL;
+	}
+	return pd_static_rx_buf_array_get()[slot];
 }
 
 #ifdef OPT_OSDP_RX_ZERO_COPY
 
 static inline struct osdp_rx_pkt *pd_static_rx_pkt_get(void)
 {
-	static struct osdp_rx_pkt g_osdp_rx_pkt;
-	return &g_osdp_rx_pkt;
+	int slot = *pd_static_pending_slot_get();
+	if (slot < 0 || slot >= OSDP_STATIC_PD_CONTEXTS) {
+		return NULL;
+	}
+	return &pd_static_rx_pkt_array_get()[slot];
 }
 
 #else /* OPT_OSDP_RX_ZERO_COPY */
 
 static inline struct osdp_rb *pd_static_rx_rb_get(void)
 {
-	static struct osdp_rb g_osdp_rb;
-	return &g_osdp_rb;
+	int slot = *pd_static_pending_slot_get();
+	if (slot < 0 || slot >= OSDP_STATIC_PD_CONTEXTS) {
+		return NULL;
+	}
+	return &pd_static_rx_rb_array_get()[slot];
 }
 
 #endif /* OPT_OSDP_RX_ZERO_COPY */
@@ -943,8 +1060,15 @@ static inline struct osdp *pd_ctx_alloc(void)
 	struct osdp *ctx;
 #ifdef OPT_OSDP_STATIC
 	ctx = pd_static_ctx_get();
+	if (!ctx) {
+		return NULL;
+	}
 	memset(ctx, 0, sizeof(struct osdp));
 	ctx->rx_buf = pd_static_rx_buf_get();
+	if (!ctx->rx_buf) {
+		pd_static_slot_release(ctx);
+		return NULL;
+	}
 #else
 	ctx = calloc(1, sizeof(struct osdp));
 	if (!ctx) {
@@ -963,6 +1087,9 @@ static inline struct osdp_pd *pd_instance_alloc(void)
 {
 #ifdef OPT_OSDP_STATIC
 	struct osdp_pd *pd = pd_static_ctx_pd_get();
+	if (!pd) {
+		return NULL;
+	}
 	memset(pd, 0, sizeof(struct osdp_pd));
 	return pd;
 #else
@@ -975,6 +1102,9 @@ static inline struct osdp_rx_pkt *pd_rx_pkt_alloc(void)
 {
 #ifdef OPT_OSDP_STATIC
 	struct osdp_rx_pkt *rx_pkt = pd_static_rx_pkt_get();
+	if (!rx_pkt) {
+		return NULL;
+	}
 	memset(rx_pkt, 0, sizeof(struct osdp_rx_pkt));
 	return rx_pkt;
 #else
@@ -986,6 +1116,9 @@ static inline struct osdp_rb *pd_rx_rb_alloc(void)
 {
 #ifdef OPT_OSDP_STATIC
 	struct osdp_rb *rx_rb = pd_static_rx_rb_get();
+	if (!rx_rb) {
+		return NULL;
+	}
 	memset(rx_rb, 0, sizeof(struct osdp_rb));
 	return rx_rb;
 #else
